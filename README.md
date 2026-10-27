@@ -9,7 +9,7 @@ Puts a [SPAN](https://www.span.io) smart panel into Apple Home's **Energy** view
 | Upstream lugs (utility service) | Electrical Sensor + **Electrical Meter** | The whole-home figure for "All Home": signed power, lifetime import and export |
 | Each circuit | Electrical Sensor (or Outlet, see below) | Per-circuit watts, volts and amps, plus lifetime energy |
 | Circuit feeding PV | Electrical Sensor, negative power | Solar production and lifetime export |
-| Circuit feeding a battery (or the BESS) | Electrical Sensor + **Power Source** | Charge/discharge power, state of charge, charging state |
+| Circuit feeding a battery (or the BESS) | **Outlet** + Power Source | A room tile with charge/discharge power; state of charge and charging state in its details |
 | Downstream lugs (sub-panel) | Electrical Sensor | Only when it shows a real net import (configurable) |
 
 ### Battery gateways upstream of the panel
@@ -21,7 +21,11 @@ A Tesla Powerwall gateway (or another DER) between the utility and the panel cha
 
 These sources report power only, so their energy is **integrated from 1 Hz power samples**. The totals are saved in `<storage>/span-matter/<serial>-energy.json`. They start at zero on first run and don't bridge gaps longer than 10 s.
 
-Battery and solar use Electrical Sensor rather than Matter's Battery Storage and Solar Power device types. iOS 27 shows a bridged Battery Storage device as "Not Supported", so these were left out until Apple supports them.
+**Where things appear in Home:** Electrical Sensors have no room tile. They are listed under the **Electricity** category at the top of the Home tab, in **All Home**. Set `circuits.mode` to `outlet` to give every circuit a tile with live watts instead.
+
+The battery is an outlet by default: an Electrical Sensor that carries a battery shows as "Not Supported" on iOS 27. Taps on its switch are undone.
+
+Battery and solar use these types rather than Matter's Battery Storage and Solar Power device types. iOS 27 shows a bridged Battery Storage device as "Not Supported", so these were left out until Apple supports them.
 
 ## Why the mapping is small
 
@@ -57,11 +61,12 @@ The result balances: grid power equals the sum of every circuit's Matter power. 
 |---|---|---|
 | `host` | (required) | Panel address |
 | `hopPassphrase` | none | Register without the door switch |
-| `circuits.mode` | `sensor` | `outlet` gives each circuit a room tile with live power. Outlets drop out of the "All Home" sum, and switching mode re-creates the devices. |
+| `circuits.mode` | `sensor` | `outlet` gives each circuit a room tile with live power. Switching mode re-creates the devices; remove and re-add the bridge in Home afterwards. |
 | `circuits.allowRelayControl` | `false` | Outlet mode only. When on, a tap opens or closes the breaker relay. When off, taps are undone. |
 | `circuits.exclude` | `[]` | Circuit names or ids to skip |
 | `feedthrough` | `auto` | `auto`, `always` or `never` |
 | `wholeHomeMeter` | `utility` | With a gateway upstream: `utility` or `panel` |
+| `batteryMode` | `outlet` | `outlet` (tile + charge level) or `sensor` (no charge level) |
 | `batteryLevel` | `true` | Publish state of charge on the battery |
 | `updateIntervalSeconds` | `1` | How often changes are pushed to Matter |
 | `powerDeadbandWatts` | `1` | Smaller power changes are not pushed |

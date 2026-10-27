@@ -69,6 +69,16 @@
           { "title": "SPAN panel load", "enum": ["panel"] }
         ]
       },
+      "batteryMode": {
+        "title": "Show the battery as",
+        "type": "string",
+        "default": "outlet",
+        "description": "Apple Home shows an electrical sensor with a battery as Not Supported. As an outlet it gets a room tile with live power and its charge level; taps are undone.",
+        "oneOf": [
+          { "title": "Outlet with charge level", "enum": ["outlet"] },
+          { "title": "Electrical sensor (no charge level)", "enum": ["sensor"] }
+        ]
+      },
       "batteryLevel": {
         "title": "Report battery state of charge",
         "type": "boolean",

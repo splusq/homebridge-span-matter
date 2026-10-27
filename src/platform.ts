@@ -34,6 +34,7 @@ export interface SpanMatterConfig extends PlatformConfig {
   feedthrough?: 'auto' | 'always' | 'never';
   wholeHomeMeter?: 'utility' | 'panel';
   batteryLevel?: boolean;
+  batteryMode?: 'outlet' | 'sensor';
   updateIntervalSeconds?: number;
   powerDeadbandWatts?: number;
 }
@@ -58,6 +59,10 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
   private readonly config: SpanMatterConfig;
   private readonly cached = new Map<string, MatterAccessory>();
   private readonly published = new Map<string, Published>();
+  /** UUIDs registered with Homebridge by this process. */
+  private readonly registered = new Set<string>();
+  /** eBus devices seen at the last sync; anything else is new. */
+  private knownDevices = new Set<string>();
   private ebus?: EbusClient;
   private integrator = new EnergyIntegrator();
   private lastSave = 0;
@@ -168,14 +173,10 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
     await this.ebus?.close();
   }
 
+  // The panel replays every description after a reconnect; only a device
+  // missing from the last sync is new.
   private isKnown(deviceId: string): boolean {
-    for (const { spec } of this.published.values()) {
-      if (spec.sourceId === deviceId || spec.key === deviceId || spec.socId === deviceId) {
-        return true;
-      }
-    }
-    // The panel, its MID and unpublished devices are not endpoints themselves.
-    return deviceId === this.ebus?.rootId;
+    return this.knownDevices.has(deviceId);
   }
 
   /**
@@ -207,12 +208,26 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
     }, 10_000);
   }
 
+  // An outlet gets its own UUID, so its own endpoint. Re-using a sensor's
+  // endpoint under a different device type leaves the Home app showing
+  // neither (found by homebridge-sunsynk on iOS 27).
   private uuid(spec: EndpointSpec): string {
-    return this.matter.uuid.generate(`${PLUGIN_NAME}:${spec.key}`);
+    return this.matter.uuid.generate(`${PLUGIN_NAME}:${spec.key}${this.mode(spec) === 'outlet' ? ':outlet' : ''}`);
   }
 
-  private circuitMode(spec: EndpointSpec): 'sensor' | 'outlet' {
-    return spec.role === 'circuit' && this.config.circuits?.mode === 'outlet' ? 'outlet' : 'sensor';
+  /**
+   * Apple Home gives an Electrical Sensor no room tile, and shows one that
+   * also carries a battery as "Not Supported". An outlet is a type it
+   * renders: a tile with live power, and the battery level in its details.
+   */
+  private mode(spec: EndpointSpec): 'sensor' | 'outlet' {
+    if (spec.role === 'circuit') {
+      return this.config.circuits?.mode === 'outlet' ? 'outlet' : 'sensor';
+    }
+    if (spec.role === 'battery') {
+      return this.config.batteryMode === 'sensor' ? 'sensor' : 'outlet';
+    }
+    return 'sensor';
   }
 
   private buildAccessory(spec: EndpointSpec): MatterAccessory {
@@ -245,7 +260,9 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
         ],
       };
     }
-    if (spec.role === 'battery' && this.config.batteryLevel !== false) {
+    // A sensor with a battery is "Not Supported" in Apple Home, so a battery
+    // left as a sensor gets no level.
+    if (spec.role === 'battery' && this.config.batteryLevel !== false && this.mode(spec) === 'outlet') {
       const battery = reading?.battery;
       clusters.powerSource = {
         status: 1,
@@ -267,15 +284,16 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
       manufacturer: 'SPAN',
       model: spec.model,
       firmwareRevision: spec.firmwareVersion,
-      context: { key: spec.key, role: spec.role, mode: this.circuitMode(spec) },
+      context: { key: spec.key, role: spec.role, mode: this.mode(spec) },
       clusters: clusters as MatterAccessory['clusters'],
     };
 
-    if (this.circuitMode(spec) === 'outlet') {
+    if (this.mode(spec) === 'outlet') {
       accessory.deviceType = matter.deviceTypes.OnOffOutlet;
       clusters.onOff = { onOff: reading?.relayClosed ?? true };
       const command = (on: boolean) => async () => {
-        if (this.config.circuits?.allowRelayControl && spec.relayControllable) {
+        // Only a plain circuit switches its relay: never a battery's breaker.
+        if (spec.role === 'circuit' && this.config.circuits?.allowRelayControl && spec.relayControllable) {
           this.log.info(`${spec.name}: ${on ? 'closing' : 'opening'} circuit relay`);
           await this.ebus!.set(spec.sourceId, 'switch', 'relay', on ? 'CLOSED' : 'OPEN');
           return;
@@ -309,6 +327,7 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
         feedthrough: this.config.feedthrough,
         wholeHomeMeter: this.config.wholeHomeMeter,
       });
+      this.knownDevices = new Set(this.ebus.tree().map(device => device.id));
       const accessories = specs.map(spec => this.buildAccessory(spec));
       const wanted = new Set(accessories.map(accessory => accessory.UUID));
 
@@ -320,7 +339,10 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
       if (stale.length) {
         this.log.info(`Removing ${stale.length} device(s) no longer on the panel or whose type changed`);
         await matter.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, stale);
-        stale.forEach(accessory => this.cached.delete(accessory.UUID));
+        stale.forEach(accessory => {
+          this.cached.delete(accessory.UUID);
+          this.registered.delete(accessory.UUID);
+        });
       }
       for (const [uuid] of this.published) {
         if (!wanted.has(uuid)) {
@@ -329,18 +351,23 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
       }
 
       // Unlike HAP, every accessory is registered on every start: handlers
-      // cannot be cached. Names are refreshed for restored ones.
+      // cannot be cached. A resync registers only what is new (Homebridge
+      // rejects a second registration) and refreshes names.
       const renamed = accessories.filter(accessory => {
         const cached = this.cached.get(accessory.UUID);
         return cached && cached.displayName !== accessory.displayName;
       });
-      await matter.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, accessories);
+      const fresh = accessories.filter(accessory => !this.registered.has(accessory.UUID));
+      if (fresh.length) {
+        await matter.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, fresh);
+        fresh.forEach(accessory => this.registered.add(accessory.UUID));
+      }
       if (renamed.length) {
         await matter.updatePlatformAccessories(renamed);
       }
       accessories.forEach(accessory => this.cached.set(accessory.UUID, accessory));
 
-      if (!(await this.waitUntilRegistered(accessories.map(accessory => accessory.UUID)))) {
+      if (!(await this.waitUntilRegistered(fresh.map(accessory => accessory.UUID)))) {
         this.log.warn('Some devices were slow to register; their first updates may be late');
       }
 
