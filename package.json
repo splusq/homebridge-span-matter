@@ -41,7 +41,7 @@
     "mqtt": "^5.16.1"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.6.5",
     "aedes": "^1.2.0",
     "homebridge": "2.4.1-beta.17",
     "typescript": "^5.9.0"
