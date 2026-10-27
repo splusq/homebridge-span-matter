@@ -3,6 +3,14 @@
   "displayName": "SPAN Panel (Matter Energy)",
   "version": "0.1.2",
   "description": "Exposes a SPAN smart panel to Apple Home as Matter energy devices: grid meter, every circuit, solar and battery, streamed live from the panel's local eBus API.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/splusq/homebridge-span-matter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/splusq/homebridge-span-matter/issues"
+  },
+  "homepage": "https://github.com/splusq/homebridge-span-matter#readme",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
