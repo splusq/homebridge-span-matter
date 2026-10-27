@@ -72,11 +72,11 @@
       "batteryMode": {
         "title": "Show the battery as",
         "type": "string",
-        "default": "outlet",
-        "description": "Apple Home shows an electrical sensor with a battery as Not Supported. As an outlet it gets a room tile with live power and its charge level; taps are undone.",
+        "default": "sensor",
+        "description": "Sensor: a tile with the charge level, which Apple Home labels Not Supported (turn off battery level to drop both). Outlet: a supported tile with live power and charge level, whose switch does nothing.",
         "oneOf": [
-          { "title": "Outlet with charge level", "enum": ["outlet"] },
-          { "title": "Electrical sensor (no charge level)", "enum": ["sensor"] }
+          { "title": "Electrical sensor", "enum": ["sensor"] },
+          { "title": "Outlet (switch does nothing)", "enum": ["outlet"] }
         ]
       },
       "batteryLevel": {

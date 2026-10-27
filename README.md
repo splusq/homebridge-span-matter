@@ -9,7 +9,7 @@ Puts a [SPAN](https://www.span.io) smart panel into Apple Home's **Energy** view
 | Upstream lugs (utility service) | Electrical Sensor + **Electrical Meter** | The whole-home figure for "All Home": signed power, lifetime import and export |
 | Each circuit | Electrical Sensor (or Outlet, see below) | Per-circuit watts, volts and amps, plus lifetime energy |
 | Circuit feeding PV | Electrical Sensor, negative power | Solar production and lifetime export |
-| Circuit feeding a battery (or the BESS) | **Outlet** + Power Source | A room tile with charge/discharge power; state of charge and charging state in its details |
+| Circuit feeding a battery (or the BESS) | Electrical Sensor + Power Source | Charge/discharge power and state of charge; see below |
 | Downstream lugs (sub-panel) | Electrical Sensor | Only when it shows a real net import (configurable) |
 
 ### Battery gateways upstream of the panel
@@ -23,7 +23,7 @@ These sources report power only, so their energy is **integrated from 1 Hz power
 
 **Where things appear in Home:** Electrical Sensors have no room tile. They are listed under the **Electricity** category at the top of the Home tab, in **All Home**. Set `circuits.mode` to `outlet` to give every circuit a tile with live watts instead.
 
-The battery is an outlet by default: an Electrical Sensor that carries a battery shows as "Not Supported" on iOS 27. Taps on its switch are undone.
+iOS 27 shows an Electrical Sensor that carries a battery as a tile with its percentage, labelled "Not Supported". Choose what you prefer: keep that (the default), set `batteryLevel: false` to drop the tile and label, or set `batteryMode: "outlet"` for a supported tile whose switch does nothing.
 
 Battery and solar use these types rather than Matter's Battery Storage and Solar Power device types. iOS 27 shows a bridged Battery Storage device as "Not Supported", so these were left out until Apple supports them.
 
@@ -66,7 +66,7 @@ The result balances: grid power equals the sum of every circuit's Matter power. 
 | `circuits.exclude` | `[]` | Circuit names or ids to skip |
 | `feedthrough` | `auto` | `auto`, `always` or `never` |
 | `wholeHomeMeter` | `utility` | With a gateway upstream: `utility` or `panel` |
-| `batteryMode` | `outlet` | `outlet` (tile + charge level) or `sensor` (no charge level) |
+| `batteryMode` | `sensor` | `sensor`, or `outlet` (supported tile; its switch does nothing) |
 | `batteryLevel` | `true` | Publish state of charge on the battery |
 | `updateIntervalSeconds` | `1` | How often changes are pushed to Matter |
 | `powerDeadbandWatts` | `1` | Smaller power changes are not pushed |

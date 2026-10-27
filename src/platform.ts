@@ -225,7 +225,7 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
       return this.config.circuits?.mode === 'outlet' ? 'outlet' : 'sensor';
     }
     if (spec.role === 'battery') {
-      return this.config.batteryMode === 'sensor' ? 'sensor' : 'outlet';
+      return this.config.batteryMode === 'outlet' ? 'outlet' : 'sensor';
     }
     return 'sensor';
   }
@@ -260,9 +260,10 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
         ],
       };
     }
-    // A sensor with a battery is "Not Supported" in Apple Home, so a battery
-    // left as a sensor gets no level.
-    if (spec.role === 'battery' && this.config.batteryLevel !== false && this.mode(spec) === 'outlet') {
+    // As a sensor, a battery with a level shows in Apple Home as a tile with
+    // its percentage but labelled "Not Supported"; batteryLevel: false drops
+    // the tile and the label with it.
+    if (spec.role === 'battery' && this.config.batteryLevel !== false) {
       const battery = reading?.battery;
       clusters.powerSource = {
         status: 1,
