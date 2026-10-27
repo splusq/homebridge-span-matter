@@ -1,0 +1,42 @@
+{
+  "name": "homebridge-span-matter",
+  "displayName": "SPAN Panel (Matter Energy)",
+  "version": "0.1.0",
+  "description": "Exposes a SPAN smart panel to Apple Home as Matter energy devices: grid meter, every circuit, solar and battery, streamed live from the panel's local eBus API.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "span-matter": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "config.schema.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "test": "npm run build && node --test 'dist/test/*.test.js'",
+    "prepublishOnly": "npm test"
+  },
+  "keywords": [
+    "homebridge-plugin",
+    "matter",
+    "span",
+    "energy",
+    "homekit"
+  ],
+  "engines": {
+    "homebridge": "^2.4.0 || ^2.4.1-beta.0",
+    "node": "^22 || ^24 || ^26"
+  },
+  "dependencies": {
+    "mqtt": "^5.16.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "aedes": "^1.2.0",
+    "homebridge": "2.4.1-beta.17",
+    "typescript": "^5.9.0"
+  },
+  "license": "MIT"
+}

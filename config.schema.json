@@ -1,0 +1,91 @@
+{
+  "pluginAlias": "SpanMatter",
+  "pluginType": "platform",
+  "singular": false,
+  "headerDisplay": "Publishes a SPAN panel to Apple Home as Matter energy devices. **Matter must be enabled for the bridge this plugin runs on** (Homebridge 2.4+, a child bridge is recommended). On first start, open the panel door and press the door switch 3 times, or enter the panel passphrase below.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "default": "SPAN"
+      },
+      "host": {
+        "title": "Panel address",
+        "type": "string",
+        "required": true,
+        "placeholder": "span-nj-1234-abcde.local",
+        "description": "The panel's .local name or IP address."
+      },
+      "hopPassphrase": {
+        "title": "Panel passphrase (optional)",
+        "type": "string",
+        "description": "Registers without the door switch. Leave empty to register by pressing the door switch 3 times."
+      },
+      "circuits": {
+        "title": "Circuits",
+        "type": "object",
+        "properties": {
+          "mode": {
+            "title": "Show circuits as",
+            "type": "string",
+            "default": "sensor",
+            "oneOf": [
+              { "title": "Electrical sensors (listed under Energy)", "enum": ["sensor"] },
+              { "title": "Outlets (room tiles with live power)", "enum": ["outlet"] }
+            ]
+          },
+          "allowRelayControl": {
+            "title": "Let the Home app switch circuit relays",
+            "type": "boolean",
+            "default": false,
+            "description": "Outlet mode only. Off: taps on a circuit are undone. On: a tap opens or closes the breaker's relay, so the circuit loses power."
+          },
+          "exclude": {
+            "title": "Circuits to leave out",
+            "type": "array",
+            "items": { "type": "string", "title": "Circuit name or id" }
+          }
+        }
+      },
+      "feedthrough": {
+        "title": "Feed-through lugs (sub-panel)",
+        "type": "string",
+        "default": "auto",
+        "oneOf": [
+          { "title": "Only when they have carried energy", "enum": ["auto"] },
+          { "title": "Always", "enum": ["always"] },
+          { "title": "Never", "enum": ["never"] }
+        ]
+      },
+      "wholeHomeMeter": {
+        "title": "Whole-home meter (when a battery gateway feeds the panel)",
+        "type": "string",
+        "default": "utility",
+        "description": "Apple Home's \"All Home\" figure follows this device. Utility: net grid import/export, energy integrated from power. Panel: everything drawn through the panel, from its own counters.",
+        "oneOf": [
+          { "title": "Utility grid", "enum": ["utility"] },
+          { "title": "SPAN panel load", "enum": ["panel"] }
+        ]
+      },
+      "batteryLevel": {
+        "title": "Report battery state of charge",
+        "type": "boolean",
+        "default": true
+      },
+      "updateIntervalSeconds": {
+        "title": "Update interval (seconds)",
+        "type": "number",
+        "default": 1,
+        "minimum": 0.5
+      },
+      "powerDeadbandWatts": {
+        "title": "Ignore power changes smaller than (W)",
+        "type": "number",
+        "default": 1,
+        "minimum": 0
+      }
+    }
+  }
+}
