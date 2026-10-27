@@ -4,6 +4,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Wait a week before proposing a new version, so compromised releases
+    # are usually caught and pulled before they can be auto-merged.
+    cooldown:
+      default-days: 7
     groups:
       npm-minor-and-patch:
         update-types:
@@ -14,6 +18,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Wait a week before proposing a new version, so compromised releases
+    # are usually caught and pulled before they can be auto-merged.
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         patterns:
