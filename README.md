@@ -73,6 +73,16 @@ The result balances: grid power equals the sum of every circuit's Matter power. 
 
 New circuits and renames on the panel are picked up automatically.
 
+### Memory
+
+A Matter child bridge costs about 250 MB before this plugin publishes anything; Homebridge and matter.js are most of it. The once-a-second updates keep the process busy, so V8 never shrinks its young generation and the heap sits about 65 MB above what is live. Capping the young generation removes that with no loss: in the child bridge's settings, or under `_bridge` in `config.json`, set
+
+```json
+"env": { "NODE_OPTIONS": "--max-semi-space-size=1" }
+```
+
+and restart the bridge.
+
 ## Development
 
 ```bash
