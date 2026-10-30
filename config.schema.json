@@ -114,7 +114,7 @@
         "type": "number",
         "default": 2,
         "minimum": 0,
-        "description": "Whichever is larger applies. Smaller changes still go out within a minute."
+        "description": "Whichever is larger applies. Smaller changes still go out within 5 minutes."
       }
     }
   }
