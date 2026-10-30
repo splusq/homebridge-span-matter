@@ -13,6 +13,7 @@ import { EnergyIntegrator } from './integrator.js';
 import { discover, read, type EndpointSpec, type Reading } from './mapping.js';
 import { CredentialStore, getCaCertificate, obtainCredentials, type SpanCredentials } from './span/auth.js';
 import { EbusClient } from './span/ebus.js';
+import { HEARTBEAT_MS, shouldPushPower } from './throttle.js';
 
 export const PLUGIN_NAME = 'homebridge-span-matter';
 export const PLATFORM_NAME = 'SpanMatter';
@@ -29,6 +30,7 @@ export interface SpanMatterConfig extends PlatformConfig {
   circuits?: {
     mode?: 'sensor' | 'outlet';
     allowRelayControl?: boolean;
+    include?: string[];
     exclude?: string[];
   };
   feedthrough?: 'auto' | 'always' | 'never';
@@ -37,6 +39,7 @@ export interface SpanMatterConfig extends PlatformConfig {
   batteryMode?: 'outlet' | 'sensor';
   updateIntervalSeconds?: number;
   powerDeadbandWatts?: number;
+  powerDeadbandPercent?: number;
 }
 
 interface Published {
@@ -44,6 +47,7 @@ interface Published {
   accessory: MatterAccessory;
   pushed: {
     power?: Reading['energy'];
+    powerAt?: number;
     energy?: { imported?: number | null; exported?: number | null; at: number };
     battery?: string;
     onOff?: boolean;
@@ -69,6 +73,9 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
   private flushTimer?: NodeJS.Timeout;
   private resyncTimer?: NodeJS.Timeout;
   private syncing = false;
+  private synced = false;
+  /** Whether the last sync saw every device on the panel described. */
+  private treeComplete = true;
   private stopped = false;
 
   constructor(private readonly log: Logging, config: PlatformConfig, private readonly api: API) {
@@ -139,12 +146,17 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
       this.log.debug(`SPAN eBus: ${message}`);
     });
     ebus.on('device', device => {
-      if (this.published.size && !this.isKnown(device.id)) {
+      if (!this.synced) {
+        return;
+      }
+      if (!this.isKnown(device.id)) {
         this.scheduleResync(`new device ${device.id}`);
+      } else if (!this.treeComplete) {
+        this.scheduleResync(`${device.id} described itself`);
       }
     });
     ebus.on('value', (device, capability, property) => {
-      if (capability === 'info' && property === 'name' && this.published.size) {
+      if (capability === 'info' && property === 'name' && this.synced) {
         this.scheduleResync(`circuit ${device.id} renamed`);
       }
     });
@@ -324,19 +336,32 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
     try {
       const matter = this.matter;
       const specs = discover(this.ebus, {
+        includeCircuits: this.config.circuits?.include,
         excludeCircuits: this.config.circuits?.exclude,
         feedthrough: this.config.feedthrough,
         wholeHomeMeter: this.config.wholeHomeMeter,
+        publishedKeys: new Set([...this.cached.values()]
+          .map(accessory => accessory.context?.key)
+          .filter((key): key is string => typeof key === 'string')),
       });
       this.knownDevices = new Set(this.ebus.tree().map(device => device.id));
+      // Removing a device deletes it from Home, rooms and automations with it.
+      // A panel still describing itself (just booted, or slow after a power
+      // cut) must not look like one whose devices are gone.
+      this.treeComplete = this.ebus.isComplete() && specs.length > 0;
       const accessories = specs.map(spec => this.buildAccessory(spec));
       const wanted = new Set(accessories.map(accessory => accessory.UUID));
 
+      const missing = [...this.cached.values()].filter(cached => !wanted.has(cached.UUID));
+      if (!this.treeComplete && missing.length) {
+        this.log.warn(`The SPAN panel has not described every device yet; keeping ${missing.length} device(s) it has not reported`);
+      }
       // A device whose type changed (sensor <-> outlet) must be re-created:
       // its cached endpoint keeps the old clusters.
       const modes = new Map(accessories.map(accessory => [accessory.UUID, accessory.context.mode]));
-      const stale = [...this.cached.values()].filter(cached => !wanted.has(cached.UUID)
-        || (cached.context?.mode ?? 'sensor') !== modes.get(cached.UUID));
+      const stale = [...this.cached.values()].filter(cached => wanted.has(cached.UUID)
+        ? (cached.context?.mode ?? 'sensor') !== modes.get(cached.UUID)
+        : this.treeComplete);
       if (stale.length) {
         this.log.info(`Removing ${stale.length} device(s) no longer on the panel or whose type changed`);
         await matter.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, stale);
@@ -375,18 +400,21 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
       const counts = specs.reduce<Record<string, number>>((all, spec) => ({ ...all, [spec.role]: (all[spec.role] ?? 0) + 1 }), {});
       this.log.info(`Publishing ${specs.length} SPAN device(s): ${Object.entries(counts).map(([role, n]) => `${n} ${role}`).join(', ')}`);
 
+      // A fresh registration may restore stale cached state, so it gets every
+      // value pushed again. The rest keep what they were sent: re-sending all
+      // of it on every resync is a burst through every Apple device.
+      const registeredNow = new Set(fresh.map(accessory => accessory.UUID));
       specs.forEach((spec, index) => {
         const uuid = accessories[index]!.UUID;
-        const previous = this.published.get(uuid);
+        const previous = registeredNow.has(uuid) ? undefined : this.published.get(uuid);
         this.published.set(uuid, { spec, accessory: accessories[index]!, pushed: previous?.pushed ?? {} });
       });
-      // Restored accessories keep their cached state, so push everything now.
-      this.published.forEach(entry => { entry.pushed = {}; });
       await this.flush();
     } catch (error) {
       this.log.error(`Could not publish SPAN devices: ${(error as Error).stack ?? error}`);
     } finally {
       this.syncing = false;
+      this.synced = true;
     }
   }
 
@@ -410,7 +438,10 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
     if (!this.ebus || this.syncing && this.published.size === 0) {
       return;
     }
-    const deadband = Math.max(0, this.config.powerDeadbandWatts ?? 1) * 1000;
+    const deadband = {
+      milliwatts: Math.max(0, this.config.powerDeadbandWatts ?? 5) * 1000,
+      percent: Math.max(0, this.config.powerDeadbandPercent ?? 2),
+    };
     const now = Date.now();
     const updates: Promise<unknown>[] = [];
 
@@ -428,12 +459,7 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
         this.matter.updateAccessoryState(uuid, cluster, state).catch(error =>
           this.log.debug(`${entry.spec.name}: ${cluster} update failed: ${(error as Error).message}`)));
 
-      const changed = (now: number | null | undefined, then: number | null | undefined, threshold: number) =>
-        (now ?? null) !== (then ?? null) && (now === null || now === undefined || then === null || then === undefined || Math.abs(now - then) >= threshold);
-      if (!last.power
-        || changed(energy.activePower, last.power.activePower, deadband)
-        || changed(energy.voltage, last.power.voltage, 500)
-        || changed(energy.activeCurrent, last.power.activeCurrent, 50)) {
+      if (shouldPushPower(energy, last.power, now - (last.powerAt ?? 0), deadband)) {
         const state: Record<string, unknown> = { activePower: energy.activePower };
         if ('voltage' in energy) {
           state.voltage = energy.voltage;
@@ -441,13 +467,13 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
         }
         update('electricalPowerMeasurement', state);
         last.power = energy;
+        last.powerAt = now;
       }
 
-      // Counters tick every second under load; whole watt hours are plenty.
+      // Counters tick every second under load, and pushing each watt hour made
+      // busy circuits push every second. Home charts energy by the hour.
       if (entry.spec.hasEnergy && (!last.energy
-        || changed(energy.imported, last.energy.imported, 1000)
-        || changed(energy.exported, last.energy.exported, 1000)
-        || (now - last.energy.at > 60_000 && (energy.imported !== last.energy.imported || energy.exported !== last.energy.exported)))) {
+        || (now - last.energy.at >= HEARTBEAT_MS && (energy.imported !== last.energy.imported || energy.exported !== last.energy.exported)))) {
         update('electricalEnergyMeasurement', {
           cumulativeEnergyImported: energyStruct(energy.imported),
           cumulativeEnergyExported: energyStruct(energy.exported),

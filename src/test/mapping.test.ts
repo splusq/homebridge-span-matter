@@ -167,6 +167,19 @@ test('exclusions, feed-through and Matter text limits', () => {
   assert.ok(specs.every(spec => spec.name.length <= 32 && spec.serialNumber.length <= 32));
   specs = discover(model);
   assert.ok(!specs.some(spec => spec.role === 'feedthrough'), 'idle feed-through hidden in auto');
+  specs = discover(model, { publishedKeys: new Set([`${SERIAL}-lugs-dn`]) });
+  assert.ok(specs.some(spec => spec.role === 'feedthrough'), 'a published feed-through stays in auto');
+  specs = discover(model, { feedthrough: 'never', publishedKeys: new Set([`${SERIAL}-lugs-dn`]) });
+  assert.ok(!specs.some(spec => spec.role === 'feedthrough'), 'never still removes it');
+});
+
+test('an include list keeps only the circuits named, never solar or battery', () => {
+  const model = middayPanel();
+  const roles = (includeCircuits: string[]) => discover(model, { includeCircuits }).map(spec => [spec.role, spec.name]);
+  assert.deepEqual(roles(['Garage']), [['grid', 'SPAN Grid'], ['solar', 'Solar'], ['battery', 'Powerwall']]);
+  assert.deepEqual(roles(['KITCHEN']), roles(['c-load']), 'by name in any case, or by id');
+  assert.ok(roles(['kitchen']).some(([role, name]) => role === 'circuit' && name === 'Kitchen'));
+  assert.ok(!discover(model, { includeCircuits: ['kitchen'], excludeCircuits: ['solar'] }).some(spec => spec.role === 'solar'));
 });
 
 test('battery charge level and state', () => {

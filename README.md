@@ -63,15 +63,21 @@ The result balances: grid power equals the sum of every circuit's Matter power. 
 | `hopPassphrase` | none | Register without the door switch |
 | `circuits.mode` | `sensor` | `outlet` gives each circuit a room tile with live power. Switching mode re-creates the devices; remove and re-add the bridge in Home afterwards. |
 | `circuits.allowRelayControl` | `false` | Outlet mode only. When on, a tap opens or closes the breaker relay. When off, taps are undone. |
+| `circuits.include` | `[]` | When set, the only circuits published, by name or id. Solar and battery are always published. |
 | `circuits.exclude` | `[]` | Circuit names or ids to skip |
 | `feedthrough` | `auto` | `auto`, `always` or `never` |
 | `wholeHomeMeter` | `utility` | With a gateway upstream: `utility` or `panel` |
 | `batteryMode` | `sensor` | `sensor`, or `outlet` (supported tile; its switch does nothing) |
 | `batteryLevel` | `true` | Publish state of charge on the battery |
-| `updateIntervalSeconds` | `1` | How often changes are pushed to Matter |
-| `powerDeadbandWatts` | `1` | Smaller power changes are not pushed |
+| `updateIntervalSeconds` | `1` | How often readings are checked and energy is integrated |
+| `powerDeadbandWatts` | `5` | Smaller power changes wait for the next minute |
+| `powerDeadbandPercent` | `2` | Same, as a share of the reading; the larger of the two applies |
 
-New circuits and renames on the panel are picked up automatically.
+New circuits and renames on the panel are picked up automatically. A device is removed only once the panel has described every device and that one is gone, so a panel that is slow to come back after a power cut does not delete devices from Home.
+
+### Load on Apple Home
+
+Every published device adds work for every Apple device in the home, and more than its share: a Mac's `homed` was measured walking the whole bridge once per device, so its work grows with the square of the device count. With 30 devices, a Home restart read the bridge 12,267 times in 20 seconds. On a busy panel, use `circuits.include` to publish just the circuits you watch. [docs/apple-home-load.md](docs/apple-home-load.md) has the measurements.
 
 ### Memory
 

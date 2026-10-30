@@ -42,6 +42,12 @@
             "default": false,
             "description": "Outlet mode only. Off: taps on a circuit are undone. On: a tap opens or closes the breaker's relay, so the circuit loses power."
           },
+          "include": {
+            "title": "Only these circuits",
+            "type": "array",
+            "items": { "type": "string", "title": "Circuit name or id" },
+            "description": "Leave empty to publish every circuit. Every device adds work for every Apple device in the home, so list just the circuits you watch on a busy panel. Solar and battery are always published."
+          },
           "exclude": {
             "title": "Circuits to leave out",
             "type": "array",
@@ -93,8 +99,15 @@
       "powerDeadbandWatts": {
         "title": "Ignore power changes smaller than (W)",
         "type": "number",
-        "default": 1,
+        "default": 5,
         "minimum": 0
+      },
+      "powerDeadbandPercent": {
+        "title": "Or smaller than this share of the reading (%)",
+        "type": "number",
+        "default": 2,
+        "minimum": 0,
+        "description": "Whichever is larger applies. Smaller changes still go out within a minute."
       }
     }
   }
