@@ -76,10 +76,20 @@ export interface Reading {
 }
 
 export interface DiscoverOptions {
+  /**
+   * When set, the only plain circuits published, by name or eBus id. Solar
+   * and battery circuits are not affected; exclude them by name.
+   */
+  includeCircuits?: string[];
   /** Circuit names or eBus ids to leave out. */
   excludeCircuits?: string[];
   /** Publish the downstream (feed-through) lugs; by default only when they have carried energy. */
   feedthrough?: 'auto' | 'always' | 'never';
+  /**
+   * Keys already published. An `auto` feed-through stays once shown, so its
+   * drifting counters cannot add and remove it from Home.
+   */
+  publishedKeys?: ReadonlySet<string>;
   /**
    * What carries the ElectricalMeter tag when a DER feeds the upstream lugs:
    * the utility connection from power-flows (default), or the panel's lugs.
@@ -106,6 +116,7 @@ export function discover(model: EbusModel, options: DiscoverOptions = {}): Endpo
   const firmwareVersion = panel.string('info', 'firmware-version');
   const devices = model.tree();
   const byType = (type: string) => devices.filter(device => device.type === type);
+  const included = new Set((options.includeCircuits ?? []).map(entry => entry.toLowerCase()));
   const excluded = new Set((options.excludeCircuits ?? []).map(entry => entry.toLowerCase()));
   const specs: EndpointSpec[] = [];
   const base = {
@@ -153,7 +164,8 @@ export function discover(model: EbusModel, options: DiscoverOptions = {}): Endpo
     const exported = downstream.number('meter', 'exported-energy') ?? 0;
     const reference = upstream?.number('meter', 'imported-energy') ?? 0;
     const net = imported - exported;
-    if (options.feedthrough === 'always' || (net > 1000 && net > 0.05 * reference)) {
+    if (options.feedthrough === 'always' || options.publishedKeys?.has(downstream.id)
+      || (net > 1000 && net > 0.05 * reference)) {
       specs.push({
         ...base,
         key: downstream.id,
@@ -180,6 +192,10 @@ export function discover(model: EbusModel, options: DiscoverOptions = {}): Endpo
     solarFromCircuit ||= feeds === 'pv';
     batteryFromCircuit ||= feeds === 'bess';
     if (excluded.has(name.toLowerCase()) || excluded.has(circuit.id.toLowerCase())) {
+      continue;
+    }
+    if (included.size && feeds !== 'pv' && feeds !== 'bess'
+      && !included.has(name.toLowerCase()) && !included.has(circuit.id.toLowerCase())) {
       continue;
     }
     const spec: EndpointSpec = {
