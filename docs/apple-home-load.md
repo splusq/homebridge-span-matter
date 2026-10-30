@@ -83,6 +83,27 @@ goes with power, since the two change together. Drift under the deadband and
 energy totals wait for the same 5-minute heartbeat. Against the mock panel,
 this cut attributes per batch from 30.4 to 15.8.
 
+## Results
+
+Measured on a Mac in the home with the bridge publishing 30 devices, each
+release installed on the Homebridge host and left running before measuring.
+
+| `homed` on the Mac | 0.1.4 | 0.1.5 | 0.1.6 | 0.1.7 |
+|---|---|---|---|---|
+| CPU, Home app closed | ~32% | 22% | 0.04% | 0.14% |
+| Log lines in 5 min, Home app closed | 51,382 | 36,096 | 377 | 540 |
+| Reports relayed to the Mac in 5 min, Home app closed | 300 | 266 | 0 | 0 |
+| CPU, Home app open | | | 0.83% | 0.47% |
+| Changed attributes reported in 3 min, Home app open | | | 192 | 41 |
+
+The 0.1.4 CPU figure is that process's average since it started. The others
+are measured over the window. With the Home app open, 0.1.7 reported no
+voltage at all, and iCloud sync stayed healthy throughout.
+
+What remains is the burst when `homed` starts: 13,195 attribute reads in the
+first minute on 0.1.7, against 12,267 on 0.1.4. It depends only on the number
+of devices, so `circuits.include` is the way to shrink it.
+
 ## Fixes, in priority order
 
 ### 1. Publish fewer devices
