@@ -13,7 +13,7 @@ import { EnergyIntegrator } from './integrator.js';
 import { discover, read, type EndpointSpec, type Reading } from './mapping.js';
 import { CredentialStore, getCaCertificate, obtainCredentials, type SpanCredentials } from './span/auth.js';
 import { EbusClient } from './span/ebus.js';
-import { HEARTBEAT_MS, shouldPushPower } from './throttle.js';
+import { HEARTBEAT_MS, powerUpdate, recordSent, type PowerSent } from './throttle.js';
 
 export const PLUGIN_NAME = 'homebridge-span-matter';
 export const PLATFORM_NAME = 'SpanMatter';
@@ -47,8 +47,7 @@ interface Published {
   spec: EndpointSpec;
   accessory: MatterAccessory;
   pushed: {
-    power?: Reading['energy'];
-    powerAt?: number;
+    power?: PowerSent;
     energy?: { imported?: number | null; exported?: number | null; at: number };
     battery?: string;
     onOff?: boolean;
@@ -480,19 +479,14 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
         continue;
       }
 
-      if (shouldPushPower(energy, last.power, now - (last.powerAt ?? 0), deadband)) {
-        const state: Record<string, unknown> = { activePower: energy.activePower };
-        if ('voltage' in energy) {
-          state.voltage = energy.voltage;
-          state.activeCurrent = energy.activeCurrent;
-        }
-        update('electricalPowerMeasurement', state);
-        last.power = energy;
-        last.powerAt = now;
+      const power = powerUpdate(energy, last.power, now, deadband);
+      if (power) {
+        update('electricalPowerMeasurement', power);
+        last.power = recordSent(last.power, power, now);
       }
 
-      // Counters tick every second under load, and pushing each watt hour made
-      // busy circuits push every second. Home charts energy by the hour.
+      // Counters tick every second under load, and every changed attribute
+      // costs a Mac a walk over the whole bridge. Home charts energy by the hour.
       if (entry.spec.hasEnergy && (!last.energy
         || (now - last.energy.at >= HEARTBEAT_MS && (energy.imported !== last.energy.imported || energy.exported !== last.energy.exported)))) {
         update('electricalEnergyMeasurement', {

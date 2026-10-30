@@ -10,6 +10,7 @@ Findings from 2026-10-30.
 | 4. Keep the feed-through once published | Done |
 | 5. Don't re-push everything on a resync | Done |
 | 6. Send changes in batches | Done: one batch every 30 s (`publishIntervalSeconds`); see [Report rate](#report-rate) |
+| 7. Send fewer attributes per batch | Done: voltage on its own (2 V swing or every 5 min), drift and energy totals every 5 min; see [Attributes per report](#attributes-per-report) |
 
 ## What happened
 
@@ -64,6 +65,23 @@ circuits something crosses the deadband almost every second: 266 reports in
 5 minutes, 36,096 log lines, `homed` at 22% CPU. Batching changes into one
 report every 30 s cuts reports about 30-fold. Against the mock panel, 0.1.5
 sent 1.01 batches a second and the batched build 0.032.
+
+## Attributes per report
+
+On 0.1.6, with the Home app closed, the Mac received no reports at all in 5
+minutes: `homed` used 0.04% CPU and wrote 377 log lines. With the Home app
+open, the reports arrive, and each 30 s batch cost about 4,000 log lines. In
+one batch, 21 changed attributes caused 3,981 loads from disk: for every
+changed attribute, `homed` re-read the Descriptor, Bridged Device Basic
+Information and Power Topology clusters of every endpoint. So a report costs
+its changed attributes times the size of the bridge.
+
+Voltage was 12 of those 21 attributes. It is one panel-wide value copied
+onto every circuit, and it went out with every power change. It now goes out
+on its own, on a swing of 2 V or with the 5-minute heartbeat. Current still
+goes with power, since the two change together. Drift under the deadband and
+energy totals wait for the same 5-minute heartbeat. Against the mock panel,
+this cut attributes per batch from 30.4 to 15.8.
 
 ## Fixes, in priority order
 

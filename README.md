@@ -71,7 +71,7 @@ The result balances: grid power equals the sum of every circuit's Matter power. 
 | `batteryLevel` | `true` | Publish state of charge on the battery |
 | `updateIntervalSeconds` | `1` | How often readings are checked and energy is integrated |
 | `publishIntervalSeconds` | `30` | How often changes go to Apple Home, in one batch. Relay switches go out at once. |
-| `powerDeadbandWatts` | `5` | Smaller power changes wait for the next minute |
+| `powerDeadbandWatts` | `5` | Smaller power changes wait up to 5 minutes. Voltage and energy totals also go out every 5 minutes, voltage sooner on a 2 V swing. |
 | `powerDeadbandPercent` | `2` | Same, as a share of the reading; the larger of the two applies |
 
 New circuits and renames on the panel are picked up automatically. A device is removed only once the panel has described every device and that one is gone, so a panel that is slow to come back after a power cut does not delete devices from Home.
