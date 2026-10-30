@@ -38,6 +38,7 @@ export interface SpanMatterConfig extends PlatformConfig {
   batteryLevel?: boolean;
   batteryMode?: 'outlet' | 'sensor';
   updateIntervalSeconds?: number;
+  publishIntervalSeconds?: number;
   powerDeadbandWatts?: number;
   powerDeadbandPercent?: number;
 }
@@ -70,6 +71,7 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
   private ebus?: EbusClient;
   private integrator = new EnergyIntegrator();
   private lastSave = 0;
+  private lastPublish = 0;
   private flushTimer?: NodeJS.Timeout;
   private resyncTimer?: NodeJS.Timeout;
   private syncing = false;
@@ -409,7 +411,7 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
         const previous = registeredNow.has(uuid) ? undefined : this.published.get(uuid);
         this.published.set(uuid, { spec, accessory: accessories[index]!, pushed: previous?.pushed ?? {} });
       });
-      await this.flush();
+      await this.flush(true);
     } catch (error) {
       this.log.error(`Could not publish SPAN devices: ${(error as Error).stack ?? error}`);
     } finally {
@@ -434,7 +436,14 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
     return pending.length === 0;
   }
 
-  private async flush(): Promise<void> {
+  /**
+   * Samples every reading, and every publish interval sends what changed in
+   * one batch. The home hub relays each report the bridge sends to every
+   * other Apple device, and a Mac's homed reloads the whole bridge from disk
+   * for each one, so the number of reports is what costs, not their size.
+   * A relay change still goes out at once.
+   */
+  private async flush(force = false): Promise<void> {
     if (!this.ebus || this.syncing && this.published.size === 0) {
       return;
     }
@@ -443,6 +452,10 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
       percent: Math.max(0, this.config.powerDeadbandPercent ?? 2),
     };
     const now = Date.now();
+    const publishing = force || now - this.lastPublish >= Math.max(0, this.config.publishIntervalSeconds ?? 30) * 1000;
+    if (publishing) {
+      this.lastPublish = now;
+    }
     const updates: Promise<unknown>[] = [];
 
     for (const [uuid, entry] of this.published) {
@@ -458,6 +471,14 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
       const update = (cluster: string, state: Record<string, unknown>) => updates.push(
         this.matter.updateAccessoryState(uuid, cluster, state).catch(error =>
           this.log.debug(`${entry.spec.name}: ${cluster} update failed: ${(error as Error).message}`)));
+
+      if (entry.accessory.clusters?.onOff && reading.relayClosed !== undefined && reading.relayClosed !== last.onOff) {
+        update('onOff', { onOff: reading.relayClosed });
+        last.onOff = reading.relayClosed;
+      }
+      if (!publishing) {
+        continue;
+      }
 
       if (shouldPushPower(energy, last.power, now - (last.powerAt ?? 0), deadband)) {
         const state: Record<string, unknown> = { activePower: energy.activePower };
@@ -487,11 +508,6 @@ export class SpanMatterPlatform implements DynamicPlatformPlugin {
           update('powerSource', { ...reading.battery });
           last.battery = key;
         }
-      }
-
-      if (entry.accessory.clusters?.onOff && reading.relayClosed !== undefined && reading.relayClosed !== last.onOff) {
-        update('onOff', { onOff: reading.relayClosed });
-        last.onOff = reading.relayClosed;
       }
     }
     await Promise.all(updates);

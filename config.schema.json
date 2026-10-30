@@ -96,6 +96,13 @@
         "default": 1,
         "minimum": 0.5
       },
+      "publishIntervalSeconds": {
+        "title": "Send changes to Apple Home every (seconds)",
+        "type": "number",
+        "default": 30,
+        "minimum": 0,
+        "description": "Changes go out in one batch this often. Every batch makes each Apple device in the home reload the whole bridge, so short intervals cost a lot. Relay switches go out at once."
+      },
       "powerDeadbandWatts": {
         "title": "Ignore power changes smaller than (W)",
         "type": "number",
