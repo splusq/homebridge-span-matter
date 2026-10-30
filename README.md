@@ -70,6 +70,7 @@ The result balances: grid power equals the sum of every circuit's Matter power. 
 | `batteryMode` | `sensor` | `sensor`, or `outlet` (supported tile; its switch does nothing) |
 | `batteryLevel` | `true` | Publish state of charge on the battery |
 | `updateIntervalSeconds` | `1` | How often readings are checked and energy is integrated |
+| `publishIntervalSeconds` | `30` | How often changes go to Apple Home, in one batch. Relay switches go out at once. |
 | `powerDeadbandWatts` | `5` | Smaller power changes wait for the next minute |
 | `powerDeadbandPercent` | `2` | Same, as a share of the reading; the larger of the two applies |
 
@@ -77,7 +78,9 @@ New circuits and renames on the panel are picked up automatically. A device is r
 
 ### Load on Apple Home
 
-Every published device adds work for every Apple device in the home, and more than its share: a Mac's `homed` was measured walking the whole bridge once per device, so its work grows with the square of the device count. With 30 devices, a Home restart read the bridge 12,267 times in 20 seconds. On a busy panel, use `circuits.include` to publish just the circuits you watch. [docs/apple-home-load.md](docs/apple-home-load.md) has the measurements.
+The home hub relays every report the bridge sends to the other Apple devices, and a Mac's `homed` reloads the whole bridge from disk for each one. What costs is how often the bridge reports and how big it is, not how much each report carries. So changes go out in one batch every `publishIntervalSeconds`. Sending every second kept a Mac's `homed` near a third of a CPU core with 30 devices.
+
+Every published device also adds to the cost of each report and of each Home restart: a Mac's `homed` walks the whole bridge once per device, so that work grows with the square of the device count. On a busy panel, use `circuits.include` to publish just the circuits you watch. [docs/apple-home-load.md](docs/apple-home-load.md) has the measurements.
 
 ### Memory
 

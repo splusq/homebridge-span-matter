@@ -9,6 +9,7 @@ Findings from 2026-10-30.
 | 3. Never remove devices on a partial view | Done |
 | 4. Keep the feed-through once published | Done |
 | 5. Don't re-push everything on a resync | Done |
+| 6. Send changes in batches | Done: one batch every 30 s (`publishIntervalSeconds`); see [Report rate](#report-rate) |
 
 ## What happened
 
@@ -38,6 +39,31 @@ to roughly a ninth (an estimate, not measured).
 This doesn't prove the bridge caused the stall. It is the biggest load on
 `homed` we could see, and every fix below also lightens the load on the Apple
 TV or HomePod that subscribes to the bridge.
+
+## Report rate
+
+A later look at `homed` in steady state showed where most of its time goes.
+The home hub relays each Matter report from the bridge to the Mac. For every
+one, `homed` creates a device object for the bridge, loads all 160 of its
+clusters from disk, injects the report, then tears the object down and
+suspends its controller again. In 5 minutes on 0.1.4:
+
+| | |
+|---|---|
+| Reports relayed to the Mac | 300, one per second: one per flush |
+| Reports that reached a device object already torn down | 299 |
+| Whole-bridge loads from disk | 525 |
+| `homed` log lines | 51,382 |
+
+So the Mac dropped almost every live update while paying a full reload for
+each. The cost scales with the number of reports times the size of the
+bridge. The number of attributes in a report barely matters.
+
+0.1.5 thinned the attributes but still flushed every second, and with 26
+circuits something crosses the deadband almost every second: 266 reports in
+5 minutes, 36,096 log lines, `homed` at 22% CPU. Batching changes into one
+report every 30 s cuts reports about 30-fold. Against the mock panel, 0.1.5
+sent 1.01 batches a second and the batched build 0.032.
 
 ## Fixes, in priority order
 
