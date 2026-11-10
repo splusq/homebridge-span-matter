@@ -43,7 +43,7 @@
   "devDependencies": {
     "@types/node": "^26.6.5",
     "aedes": "^1.2.0",
-    "homebridge": "2.4.1-beta.17",
+    "homebridge": "2.5.0",
     "typescript": "^7.0.2"
   },
   "license": "MIT"
